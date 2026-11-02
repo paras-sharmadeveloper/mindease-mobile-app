@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,6 +11,11 @@ import '../config/app_constants.dart';
 import '../config/env_config.dart';
 import 'api_exception.dart';
 import 'api_response.dart';
+
+/// Provider for ApiClient
+final apiClientProvider = Provider<ApiClient>((ref) {
+  return ApiClient();
+});
 
 /// MindEase Centralized HTTP API Client
 class ApiClient {
@@ -247,8 +253,28 @@ class ApiClient {
 
     // Error mapping
     String errorMessage = 'An error occurred. Please try again.';
-    if (decoded is Map<String, dynamic> && decoded.containsKey('message')) {
-      errorMessage = decoded['message'].toString();
+    String? errorCode;
+    String? errorField;
+
+    if (decoded is Map<String, dynamic>) {
+      if (decoded.containsKey('message') && decoded['message'] != null) {
+        errorMessage = decoded['message'].toString();
+      } else if (decoded.containsKey('error') && decoded['error'] != null) {
+        final err = decoded['error'];
+        if (err is Map<String, dynamic>) {
+          if (err.containsKey('message') && err['message'] != null) {
+            errorMessage = err['message'].toString();
+          }
+          if (err.containsKey('code') && err['code'] != null) {
+            errorCode = err['code']?.toString();
+          }
+          if (err.containsKey('field') && err['field'] != null) {
+            errorField = err['field']?.toString();
+          }
+        } else if (err is String) {
+          errorMessage = err;
+        }
+      }
     }
 
     if (statusCode == 401) {
@@ -264,7 +290,13 @@ class ApiClient {
     } else if (statusCode >= 500) {
       throw ServerException(message: errorMessage, statusCode: statusCode, details: decoded);
     } else {
-      throw ApiException(message: errorMessage, statusCode: statusCode, details: decoded);
+      throw ApiException(
+        message: errorMessage,
+        statusCode: statusCode,
+        code: errorCode,
+        field: errorField,
+        details: decoded,
+      );
     }
   }
 }

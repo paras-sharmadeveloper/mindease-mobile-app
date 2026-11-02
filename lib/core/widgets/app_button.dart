@@ -10,10 +10,13 @@ class AppButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final bool showArrow;
+  final IconData? icon;
   final double? width;
   final double height;
   final Color? backgroundColor;
   final Color? textColor;
+  final double? fontSize;
+  final TextStyle? textStyle;
 
   const AppButton({
     Key? key,
@@ -21,16 +24,20 @@ class AppButton extends StatelessWidget {
     required this.onPressed,
     this.isLoading = false,
     this.showArrow = true,
+    this.icon,
     this.width,
     this.height = AppSpacing.buttonHeight,
     this.backgroundColor,
     this.textColor,
+    this.fontSize,
+    this.textStyle,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final effectiveBgColor = backgroundColor ?? AppColors.primary;
     final effectiveTextColor = textColor ?? AppColors.textOnPrimary;
+    final effectiveTextStyle = textStyle ?? AppTypography.buttonLarge;
 
     return Container(
       width: width ?? double.infinity,
@@ -48,7 +55,7 @@ class AppButton extends StatelessWidget {
             borderRadius: AppSpacing.roundedPill,
           ),
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
         ),
         child: isLoading
             ? const SizedBox(
@@ -63,16 +70,21 @@ class AppButton extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    text,
-                    style: AppTypography.buttonLarge.copyWith(
-                      color: effectiveTextColor,
+                  Flexible(
+                    child: Text(
+                      text,
+                      style: effectiveTextStyle.copyWith(
+                        color: effectiveTextColor,
+                        fontSize: fontSize ?? effectiveTextStyle.fontSize,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (showArrow) ...[
                     const SizedBox(width: 8),
                     Icon(
-                      Icons.arrow_forward_rounded,
+                      icon ?? Icons.arrow_forward_rounded,
                       size: 18,
                       color: effectiveTextColor,
                     ),

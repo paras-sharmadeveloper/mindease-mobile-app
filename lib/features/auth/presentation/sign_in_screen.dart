@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../../core/network/api_exception.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
@@ -7,29 +9,34 @@ import '../../../core/widgets/app_banner.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/curved_header.dart';
+import 'providers/auth_provider.dart';
+import 'providers/auth_state.dart';
 
 /// 1.04 Sign In Screen ("Sign In To MindEase")
-class SignInScreen extends StatefulWidget {
+class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({Key? key}) : super(key: key);
 
   @override
-  State<SignInScreen> createState() => _SignInScreenState();
+  ConsumerState<SignInScreen> createState() => _SignInScreenState();
 }
 
-class _SignInScreenState extends State<SignInScreen> {
+class _SignInScreenState extends ConsumerState<SignInScreen> {
   late final TextEditingController _emailController;
   late final TextEditingController _passwordController;
 
   bool _isLoading = false;
-  // Initially show the exact error banner from the mockup design
-  String? _errorMessage =
-      "We couldn't find an account with that email. Check it, or sign up.";
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _emailController = TextEditingController(text: 'ramsy@hyperiontech.com');
+    _emailController = TextEditingController(text: '');
     _passwordController = TextEditingController();
+
+    // Clear any leftover auth errors from other screens upon entering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(authNotifierProvider.notifier).clearError();
+    });
   }
 
   @override
@@ -40,34 +47,38 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   Future<void> _handleSignIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter both email and password.';
+      });
+      return;
+    }
+
     setState(() {
+      _errorMessage = null;
       _isLoading = true;
     });
 
-    try {
-      // Simulate/call API
-      await Future.delayed(const Duration(milliseconds: 900));
+    final success = await ref.read(authNotifierProvider.notifier).login(
+          email: email,
+          password: password,
+        );
 
-      if (mounted) {
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      if (success) {
+        context.go(RouteNames.dashboard);
+      } else {
+        final authState = ref.read(authStateProvider);
         setState(() {
-          _isLoading = false;
-          // In real flow or demonstration, if email is invalid show banner
-          _errorMessage =
-              "We couldn't find an account with that email. Check it, or sign up.";
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = e.message;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = "Unable to connect. Please try again.";
+          _errorMessage = authState.loginErrorMessage ??
+              'That email and password don\'t match. Please try again.';
         });
       }
     }
@@ -75,6 +86,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authStateProvider);
+    final bannerMessage = _errorMessage ??
+        (authState.status == AuthStatus.error ? authState.loginErrorMessage : null);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
@@ -83,7 +98,14 @@ class _SignInScreenState extends State<SignInScreen> {
             // Top Terracotta Curved Wave Header
             CurvedHeader(
               height: 140,
-              onBack: () => Navigator.of(context).maybePop(),
+              onBack: () {
+                ref.read(authNotifierProvider.notifier).clearError();
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go(RouteNames.welcome);
+                }
+              },
             ),
 
             Padding(
@@ -101,13 +123,14 @@ class _SignInScreenState extends State<SignInScreen> {
                   const SizedBox(height: 16),
 
                   // Error / Warning Alert Banner
-                  if (_errorMessage != null) ...[
+                  if (bannerMessage != null) ...[
                     AppBanner.error(
-                      message: _errorMessage!,
+                      message: bannerMessage,
                       onClose: () {
                         setState(() {
                           _errorMessage = null;
                         });
+                        ref.read(authNotifierProvider.notifier).clearError();
                       },
                     ),
                     const SizedBox(height: 18),
@@ -120,19 +143,32 @@ class _SignInScreenState extends State<SignInScreen> {
                     controller: _emailController,
                     prefixIcon: Icons.mail_outline_rounded,
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) {
+                      if (_errorMessage != null) {
+                        setState(() {
+                          _errorMessage = null;
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 14),
 
-                  // Password field (with valid/active green border as in mockup)
+                  // Password field
                   AppTextField(
                     label: 'Password',
                     hintText: 'Enter your password',
                     controller: _passwordController,
                     isPassword: true,
                     prefixIcon: Icons.lock_outline_rounded,
-                    state: AppTextFieldState.valid,
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _handleSignIn(),
+                    onChanged: (_) {
+                      if (_errorMessage != null) {
+                        setState(() {
+                          _errorMessage = null;
+                        });
+                      }
+                    },
                   ),
                   const SizedBox(height: 24),
 
@@ -154,7 +190,8 @@ class _SignInScreenState extends State<SignInScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          Navigator.of(context).pushReplacementNamed(RouteNames.signUp);
+                          ref.read(authNotifierProvider.notifier).clearError();
+                          context.pushReplacement(RouteNames.signUp);
                         },
                         child: Text(
                           'Sign up',
@@ -168,7 +205,8 @@ class _SignInScreenState extends State<SignInScreen> {
                   // "Forgot password" Link
                   GestureDetector(
                     onTap: () {
-                      Navigator.of(context).pushNamed(RouteNames.forgotPassword);
+                      ref.read(authNotifierProvider.notifier).clearError();
+                      context.push(RouteNames.forgotPassword);
                     },
                     child: Text(
                       'Forgot password',
